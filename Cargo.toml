@@ -16,7 +16,10 @@ panic-probe = { version = "0.1.0", features = ["print-defmt"] }
 nrf52840-hal = "0.12.0"
 embedded-hal = "0.2.4"
 shared-bus = "0.2.0"
-ds323x = "0.3.1"
+
+[dependencies.ds323x]
+version = "0.3.1"
+path = "./../ds323x-rs"
 
 [dependencies.sensor-scd30]
 version = "0.3.0"
@@ -28,6 +31,9 @@ branch = "clock-test"
 path = "../spark-ser7seg"
 
 [features]
+
+panic-reset = []
+
 # set logging levels here
 default = [
   "defmt-default",

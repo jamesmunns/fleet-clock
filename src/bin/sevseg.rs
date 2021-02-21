@@ -2,7 +2,7 @@
 #![no_std]
 #![allow(unused_imports)]
 
-use ds323x::{Ds323x, Rtcc};
+use ds323x::{Ds323x, Rtcc, NaiveDateTime, NaiveDate, NaiveTime};
 use embedded_hal::blocking::{
     delay::{DelayMs, DelayUs},
     i2c::{Read, Write},
@@ -21,7 +21,7 @@ use nrf52840_hal::{
 };
 use sensor_scd30::Scd30;
 use shared_bus::BusManagerSimple;
-use spark_ser7seg::{i2c::SevSegI2c, SevenSegInterface};
+use spark_ser7seg::{i2c::SevSegI2c, SevenSegInterface, PunctuationFlags};
 
 use fleet_clock as _; // global logger + panicking-behavior + memory layout
 
@@ -60,8 +60,30 @@ fn main() -> ! {
     let mut ds3231 = Ds323x::new_ds3231(bus.acquire_i2c());
     let mut scd30 = None;
 
+    let date = NaiveDate::from_ymd(2021, 2, 21);
+    let time = NaiveTime::from_hms(22, 36, 40);
+    let base_now = NaiveDateTime::new(date, time);
+
+    let dt = ds3231.get_datetime().unwrap();
+
+    let mut time_sep = true;
+
+    // HACK FOR TIME INIT
+    if dt < base_now {
+        defmt::warn!("Setting clock!");
+        ds3231.set_datetime(&base_now).unwrap();
+        timer.delay_ms(10u32);
+    }
+
+    let mut hours = ds3231.get_hours().unwrap();
+    let mut mins = ds3231.get_minutes().unwrap();
+    let mut secs = ds3231.get_seconds().unwrap();
+
+
     sevseg.set_cursor(0).unwrap();
-    timer.delay_us(15u32);
+    timer.delay_us(100u32);
+    sevseg.write_punctuation(PunctuationFlags::NONE).unwrap();
+    timer.delay_us(100u32);
     let num = 1234;
     {
         if num > 9999 {
@@ -70,7 +92,7 @@ fn main() -> ! {
 
         sevseg.set_cursor(0).unwrap();
 
-        timer.delay_us(15u32);
+        timer.delay_us(100u32);
 
         let data: [u8; 4] = [
             (num / 1000) as u8,
@@ -80,10 +102,31 @@ fn main() -> ! {
         ];
 
         sevseg.send(&data).unwrap();
+        timer.delay_ms(1000u32);
     }
-    // sevseg.set_num(num).unwrap();
+
+    defmt::info!("cycling nums...");
+    for i in 0..16 {
+        let nums = [i as u8; 4];
+        sevseg.write_digits(&nums).ok();
+        timer.delay_ms(100u32);
+    }
+
+
+
+
+    sevseg.set_cursor(0).unwrap();
+    timer.delay_us(15u32);
+
+    sevseg.write_digits(&time2bytes(hours, mins)).unwrap();
+    timer.delay_us(100u32);
+    sevseg.write_punctuation(PunctuationFlags::DOTS_COLON).unwrap();
 
     loop {
+        let new_hours = ds3231.get_hours().unwrap();
+        let new_mins = ds3231.get_minutes().unwrap();
+        let new_secs = ds3231.get_seconds().unwrap();
+
         if scd30.is_none() {
             match Scd30::new(bus.acquire_i2c()) {
                 Ok(scd) => {
@@ -108,80 +151,98 @@ fn main() -> ! {
             }
         }
 
-        defmt::info!("cycling nums...");
-        for i in 0..10 {
-            let nums = [i as u8; 4];
-            sevseg.write_digits(&nums).ok();
-            timer.delay_ms(100u32);
+
+        // TODO: End of hour report?
+
+        if scd30.is_some() && (mins != new_mins) {
+            if let Some(scd) = &mut scd30 {
+                defmt::info!("Checking SCD...");
+                if scd.data_ready().unwrap() {
+
+                    sevseg.set_cursor(0).unwrap();
+                    timer.delay_us(100u32);
+                    sevseg.write_punctuation(PunctuationFlags::NONE).unwrap();
+                    timer.delay_us(100u32);
+
+                    sevseg.send(b" co2").unwrap();
+                    timer.delay_ms(2000u32);
+
+                    let meas = scd.read_data().unwrap();
+                    defmt::info!("co2: {:?}", meas.co2);
+                    sevseg.write_digits(&num2bytes(meas.co2 as u16)).unwrap();
+                    timer.delay_ms(2000u32);
+
+                    defmt::info!("temp: {:?}", meas.temp);
+                    sevseg.write_digits(&num2bytes((meas.temp * 100.0) as u16)).ok();
+                    timer.delay_us(100u32);
+                    sevseg.write_punctuation(PunctuationFlags::DOT_BETWEEN_2_AND_3).unwrap();
+                    timer.delay_us(100u32);
+                    sevseg.set_cursor(3).unwrap();
+                    timer.delay_us(100u32);
+                    sevseg.send(b"C").unwrap();
+                    timer.delay_ms(2000u32);
+
+                    sevseg.write_punctuation(PunctuationFlags::NONE).unwrap();
+                    timer.delay_us(100u32);
+
+                    defmt::info!("rh: {:?}", meas.rh);
+                    sevseg.write_digits(&num2bytes((meas.rh * 100.0) as u16)).ok();
+                    timer.delay_us(100u32);
+                    sevseg.set_cursor(2).unwrap();
+                    timer.delay_us(100u32);
+                    sevseg.send(b"rh").unwrap();
+                    timer.delay_ms(2000u32);
+
+                } else {
+                    defmt::warn!("SCD data not ready...");
+                }
+            }
+        } else if new_secs != secs {
+            let punc = if secs < 15 {
+                PunctuationFlags::DOT_BETWEEN_1_AND_2
+            } else if secs < 30 {
+                PunctuationFlags::DOT_BETWEEN_2_AND_3
+            } else if secs < 45 {
+                PunctuationFlags::DOT_BETWEEN_3_AND_4
+            } else {
+                PunctuationFlags::DOT_RIGHT_OF_4
+            };
+
+
+
+            time_sep = !time_sep;
+            if time_sep {
+                sevseg.write_punctuation(PunctuationFlags::DOTS_COLON | punc).unwrap();
+            } else {
+                sevseg.write_punctuation(PunctuationFlags::NONE | punc).unwrap();
+            }
+            timer.delay_us(100u32);
         }
 
-        defmt::info!("Checking DS3231 data...");
-        if let Ok(temp) = ds3231.get_temperature() {
-            defmt::info!("temp: {:?}", temp);
-            timer.delay_ms(10u32);
+        hours = new_hours;
+        mins = new_mins;
+        secs = new_secs;
 
-            let num = temp as u16;
-            match sevseg.write_digits(&num2bytes(num)) {
-                Ok(_) => {}
-                Err(e) => defmt::error!("sevseg error"),
-            }
-            timer.delay_ms(1000u32);
-
-            if let (Ok(hour), Ok(minute)) = (ds3231.get_hours(), ds3231.get_minutes()) {
-                let hour = match hour {
-                    ds323x::Hours::AM(am) => am,
-                    ds323x::Hours::PM(pm) => pm + 12,
-                    ds323x::Hours::H24(h24) => h24,
-                };
-
-                defmt::info!("{:?}:{:?}", hour, minute);
-                match sevseg.write_digits(&num2bytes(((hour * 100) + minute) as u16)) {
-                    Ok(_) => {}
-                    Err(e) => defmt::error!("sevseg error"),
-                }
-                timer.delay_ms(1000u32);
-            }
-
-            if let Ok(year) = ds3231.get_year() {
-                defmt::info!("Year: {:?}", year);
-                match sevseg.write_digits(&num2bytes(year as u16)) {
-                    Ok(_) => {}
-                    Err(e) => defmt::error!("sevseg error"),
-                }
-                timer.delay_ms(1000u32);
-            }
-        } else {
-            defmt::warn!("No DS3231...");
-        }
+        sevseg.write_digits(&time2bytes(hours, mins)).unwrap();
 
         timer.delay_ms(100u32);
-
-        if let Some(scd) = &mut scd30 {
-            defmt::info!("Checking SCD...");
-            if scd.data_ready().unwrap() {
-                let meas = scd.read_data().unwrap();
-
-                timer.delay_ms(100u32);
-
-                defmt::info!("co2: {:?}", meas.co2);
-                sevseg.write_digits(&num2bytes(meas.co2 as u16)).unwrap();
-                timer.delay_ms(1000u32);
-
-                defmt::info!("temp: {:?}", meas.temp);
-                sevseg.write_digits(&num2bytes(meas.temp as u16)).ok();
-                timer.delay_ms(1000u32);
-
-                defmt::info!("rh: {:?}", meas.rh);
-                sevseg.write_digits(&num2bytes(meas.rh as u16)).ok();
-                timer.delay_ms(1000u32);
-            } else {
-                defmt::warn!("SCD data not ready...");
-            }
-        }
     }
 }
 
-fn num2bytes(num: u16) -> [u8; 4] {
+fn time2bytes(h: ds323x::Hours, m: u8) -> [u8; 4] {
+    let hour = match h {
+        ds323x::Hours::AM(am) => am,
+        ds323x::Hours::PM(pm) => pm + 12,
+        ds323x::Hours::H24(h24) => h24,
+    };
+
+    num2bytes(((hour as u32 * 100) as u16 + m as u16) as u16)
+}
+
+fn num2bytes(mut num: u16) -> [u8; 4] {
+
+    num = num.min(9999);
+
     let data: [u8; 4] = [
         (num / 1000) as u8,
         ((num % 1000) / 100) as u8,

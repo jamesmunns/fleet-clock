@@ -9,9 +9,16 @@ use panic_probe as _;
 
 // same panicking *behavior* as `panic-probe` but doesn't print a panic message
 // this prevents the panic message being printed *twice* when `defmt::panic` is invoked
+#[cfg(not(feature = "panic-reset"))]
 #[defmt::panic_handler]
 fn panic() -> ! {
     cortex_m::asm::udf()
+}
+
+#[cfg(feature = "panic-reset")]
+#[defmt::panic_handler]
+fn panic() -> ! {
+    cortex_m::peripheral::SCB::sys_reset()
 }
 
 #[defmt::timestamp]
