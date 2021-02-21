@@ -15,9 +15,14 @@ defmt-rtt = "0.1.0"
 panic-probe = { version = "0.1.0", features = ["print-defmt"] }
 nrf52840-hal = "0.12.0"
 embedded-hal = "0.2.4"
-sensor-scd30 = { version = "0.3.0", default-features = false, path = "../rust-sensor-scd30" }
 shared-bus = "0.2.0"
 ds323x = "0.3.1"
+
+[dependencies.sensor-scd30]
+version = "0.3.0"
+default-features = false
+git = "https://github.com/jamesmunns/rust-sensor-scd30"
+branch = "clock-test"
 
 [dependencies.spark-ser7seg]
 path = "../spark-ser7seg"
