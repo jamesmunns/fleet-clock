@@ -42,7 +42,7 @@ fn main() -> ! {
     // active/running), or just spin and wait for the dog to bite.
     let mut wdh = Watchdog::try_new(board.WDT)
         .map(|mut wdt| {
-            wdt.set_lfosc_ticks(32768 * 15);
+            wdt.set_lfosc_ticks(32768 * 30);
             wdt.activate::<OneDog>()
         })
         .or_else(Watchdog::try_recover::<OneDog>)
@@ -170,22 +170,22 @@ fn main() -> ! {
 
                 let updata = if hours_up <= 99.9f32 {
                     let show = (hours_up * 100f32) as u16;
-                    let dot = PunctuationFlags::DOT_BETWEEN_1_AND_2;
+                    let dot = PunctuationFlags::DOT_BETWEEN_2_AND_3;
                     let unit = b"h";
                     Some((show, dot, unit))
                 } else if hours_up <= 999.5f32 {
                     let show = (hours_up * 10f32) as u16;
-                    let dot = PunctuationFlags::DOT_BETWEEN_2_AND_3;
+                    let dot = PunctuationFlags::NONE;
                     let unit = b"h";
                     Some((show, dot, unit))
                 } else if days_up <= 99.9f32 {
                     let show = (days_up * 100f32) as u16;
-                    let dot = PunctuationFlags::DOT_BETWEEN_1_AND_2;
+                    let dot = PunctuationFlags::DOT_BETWEEN_2_AND_3;
                     let unit = b"d";
                     Some((show, dot, unit))
                 } else if days_up <= 999.5f32 {
                     let show = (days_up * 10f32) as u16;
-                    let dot = PunctuationFlags::DOT_BETWEEN_2_AND_3;
+                    let dot = PunctuationFlags::NONE;
                     let unit = b"d";
                     Some((show, dot, unit))
                 } else if days_up > 999.5f32 {
