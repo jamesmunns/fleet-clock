@@ -18,8 +18,7 @@ embedded-hal = "0.2.4"
 shared-bus = "0.2.0"
 
 [dependencies.ds323x]
-version = "0.3.1"
-path = "./../ds323x-rs"
+version = "0.3.2"
 
 [dependencies.sensor-scd30]
 version = "0.3.0"
