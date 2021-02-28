@@ -351,18 +351,26 @@ fn main() -> ! {
     // TODO: FILL AND SHOW THE DISPLAY
     defmt::info!("Filling display...");
 
-    let mut buf = [0xFFu8; 2756];
-    buf[..(13 * 5)].copy_from_slice(&[0x00; (13 * 5)]);
+    let mut buf2 = [0xFFu8; 2756];
+
+    for x in &mut buf2[..(13 * 70)] {
+        *x = 0x00;
+    }
 
     // writeRAMFramebufferToEPD(buffer1, buffer1_size, 0);
-    display.command(EPD_RAM_BW, Some(&buf)).unwrap();
+    display.command(EPD_RAM_BW, Some(&buf2)).unwrap();
 
     timer.delay_ms(2u32);
-    let mut buf = [0xFFu8; 2756];
-    buf[(13 * 5)..(13 * 5 * 2)].copy_from_slice(&[0x00; (13 * 5)]);
+
+    for x in &mut buf2[..(13 * 70)] {
+        *x = 0xFF;
+    }
+    for x in &mut  buf2[(13 * 70)..(13 * 70 * 2)] {
+        *x = 0x00;
+    }
 
     // writeRAMFramebufferToEPD(buffer2, buffer2_size, 1);
-    display.command(EPD_RAM_RED, Some(&buf)).unwrap();
+    display.command(EPD_RAM_RED, Some(&buf2)).unwrap();
 
     // update();
     defmt::info!("Refresh and wait 20s...");
